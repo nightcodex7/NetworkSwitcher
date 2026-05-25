@@ -14,19 +14,26 @@ class PermissionManager(private val context: Context) {
 
     fun isShizukuRunning(): Boolean {
         return try {
-            Shizuku.pingBinder()
+            val running = Shizuku.pingBinder()
+            android.util.Log.d("PermissionManager", "isShizukuRunning: pingBinder=$running")
+            running
         } catch (e: Throwable) {
+            android.util.Log.e("PermissionManager", "isShizukuRunning: exception", e)
             false
         }
     }
 
     fun hasShizukuPermission(): Boolean {
         return if (!isShizukuRunning()) {
+            android.util.Log.d("PermissionManager", "hasShizukuPermission: Shizuku not running")
             false
         } else {
             try {
-                Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+                val granted = Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+                android.util.Log.d("PermissionManager", "hasShizukuPermission: checkSelfPermission result granted=$granted")
+                granted
             } catch (e: Throwable) {
+                android.util.Log.e("PermissionManager", "hasShizukuPermission: exception", e)
                 false
             }
         }

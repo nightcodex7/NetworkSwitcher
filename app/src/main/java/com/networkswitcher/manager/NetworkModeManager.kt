@@ -65,7 +65,8 @@ class NetworkModeManager(
         }
 
         // Write allowed network types bitmask via modern telephony cmd (Android 12 to 17)
-        val cmdAllowedTypes = "cmd phone set-allowed-network-types-for-users -s $slotId ${mode.allowedTypesBitmask}"
+        val bitmaskStr = java.lang.Long.toBinaryString(mode.allowedTypesBitmask).padStart(20, '0')
+        val cmdAllowedTypes = "cmd phone set-allowed-network-types-for-users -s $slotId $bitmaskStr"
         val cmdRes = executeShellCommand(cmdAllowedTypes)
         overallSuccess = overallSuccess && cmdRes
 

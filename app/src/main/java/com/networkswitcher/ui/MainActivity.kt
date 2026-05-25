@@ -53,6 +53,14 @@ class MainActivity : ComponentActivity() {
         viewModel.refreshState()
     }
 
+    private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
+        viewModel.refreshState()
+    }
+
+    private val binderDeadListener = Shizuku.OnBinderDeadListener {
+        viewModel.refreshState()
+    }
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { _ ->
@@ -73,6 +81,8 @@ class MainActivity : ComponentActivity() {
         viewModel = ViewModelProvider(this, viewModelFactory)[MainViewModel::class.java]
 
         Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
+        Shizuku.addBinderReceivedListener(binderReceivedListener)
+        Shizuku.addBinderDeadListener(binderDeadListener)
 
         // Request READ_PHONE_STATE permission at startup for multi-SIM queries
         if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
@@ -89,6 +99,8 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+        Shizuku.removeBinderReceivedListener(binderReceivedListener)
+        Shizuku.removeBinderDeadListener(binderDeadListener)
     }
 }
 
