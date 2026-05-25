@@ -36,13 +36,14 @@ class PermissionManager(private val context: Context) {
         if (hasWriteSecureSettings()) {
             return PermissionState.GRANTED
         }
-        if (isShizukuRunning()) {
-            return if (hasShizukuPermission()) {
+        return if (isShizukuRunning()) {
+            if (hasShizukuPermission()) {
                 PermissionState.GRANTED
             } else {
                 PermissionState.SHIZUKU_DENIED
             }
+        } else {
+            PermissionState.SHIZUKU_NOT_RUNNING
         }
-        return PermissionState.WRITE_SECURE_SETTINGS_MISSING
     }
 }

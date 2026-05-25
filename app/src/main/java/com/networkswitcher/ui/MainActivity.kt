@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
         
         val app = application as NetworkSwitchApplication
         val viewModelFactory = MainViewModelFactory(
+            app,
             app.networkRepository,
             app.settingsRepository,
             app.permissionManager,
@@ -362,7 +363,7 @@ fun PermissionBanner(
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -379,28 +380,46 @@ fun PermissionBanner(
                 }
 
                 val descText = when (permissionState) {
-                    PermissionState.WRITE_SECURE_SETTINGS_MISSING -> 
-                        "This app needs secure system privileges to switch bands. Grant via ADB or use Shizuku."
                     PermissionState.SHIZUKU_NOT_RUNNING -> 
-                        "Shizuku detected but service is not running. Please start Shizuku manager."
+                        "Shizuku manager is not running. Please start the Shizuku service first."
                     PermissionState.SHIZUKU_DENIED -> 
-                        "Shizuku permission denied. Grant it inside Shizuku manager."
-                    else -> ""
+                        "Shizuku access has not been authorized. Please approve the prompt or check Shizuku manager."
+                    else -> 
+                        "The application requires WRITE_SECURE_SETTINGS permissions to toggle hardware bands."
                 }
 
                 Text(
                     text = descText,
                     fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
                 )
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.error.copy(alpha = 0.2f))
 
+                // Option 1: Shizuku steps
                 Text(
-                    text = "Option 1: ADB Command (Recommended)",
+                    text = "Option 1: Setup Shizuku Manager",
                     fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "1. Install the Shizuku app.\n2. Open Shizuku and start the service (using Wireless Debugging or Root access).\n3. Return here and tap \"Request Shizuku\" below to link.",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+
+                // Option 2: ADB command
+                Text(
+                    text = "Option 2: ADB Secure Setting Grant",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Connect phone to PC with USB Debugging enabled, then execute:",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
                 
                 val adbCmd = "adb shell pm grant com.networkswitcher android.permission.WRITE_SECURE_SETTINGS"
@@ -420,7 +439,7 @@ fun PermissionBanner(
                     Text(
                         text = adbCmd,
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.secondary,
                         textAlign = TextAlign.Start
                     )
                 }
@@ -430,14 +449,12 @@ fun PermissionBanner(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (permissionState == PermissionState.SHIZUKU_DENIED || permissionState == PermissionState.SHIZUKU_NOT_RUNNING) {
-                        Button(
-                            onClick = onAuthorizeShizuku,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            Text("Request Shizuku", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary)
-                        }
+                    Button(
+                        onClick = onAuthorizeShizuku,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text("Request Shizuku", fontSize = 12.sp, color = MaterialTheme.colorScheme.onPrimary)
                     }
                     TextButton(onClick = onCheckStatus) {
                         Text("Recheck Status", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)

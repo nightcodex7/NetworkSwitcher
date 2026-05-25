@@ -1,5 +1,6 @@
 package com.networkswitcher.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.networkswitcher.data.repository.NetworkRepository
@@ -8,6 +9,7 @@ import com.networkswitcher.manager.NetworkModeManager
 import com.networkswitcher.manager.PermissionManager
 
 class MainViewModelFactory(
+    private val context: Context,
     private val networkRepository: NetworkRepository,
     private val settingsRepository: SettingsRepository,
     private val permissionManager: PermissionManager,
@@ -17,6 +19,7 @@ class MainViewModelFactory(
         if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
             return MainViewModel(
+                context,
                 networkRepository,
                 settingsRepository,
                 permissionManager,

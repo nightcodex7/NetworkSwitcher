@@ -1,5 +1,8 @@
 package com.networkswitcher.ui.viewmodel
 
+import android.content.ComponentName
+import android.content.Context
+import android.service.quicksettings.TileService
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.networkswitcher.data.model.NetworkMode
@@ -19,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class MainViewModel(
+    private val context: Context,
     private val networkRepository: NetworkRepository,
     private val settingsRepository: SettingsRepository,
     private val permissionManager: PermissionManager,
@@ -77,6 +81,17 @@ class MainViewModel(
             if (success) {
                 settingsRepository.saveNetworkMode(sim.slotIndex, mode)
                 refreshState()
+                
+                // Refresh Quick Settings Tile status
+                try {
+                    TileService.requestListeningState(
+                        context,
+                        ComponentName(context, "com.networkswitcher.service.NetworkSwitchTileService")
+                    )
+                } catch (e: Throwable) {
+                    // Ignore background request failures
+                }
+                
                 _actionResult.emit(Resource.Success("Successfully applied: ${mode.title} for ${sim.displayName}"))
             } else {
                 _actionResult.emit(Resource.Error("Failed to apply. Verify permissions are granted."))
