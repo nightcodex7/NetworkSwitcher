@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.networkswitcher.data.model.NetworkMode
 import com.networkswitcher.data.model.PermissionState
+import com.networkswitcher.data.model.SimInfo
 import com.networkswitcher.data.repository.NetworkRepository
 import com.networkswitcher.data.repository.SettingsRepository
 import com.networkswitcher.manager.NetworkModeManager
@@ -25,10 +26,8 @@ class MainViewModel(
 ) : ViewModel() {
 
     data class UiState(
-        val carrierName: String = "",
-        val networkTypeName: String = "",
-        val activeSimCount: Int = 1,
-        val selectedMode: NetworkMode = NetworkMode.FIVE_G_PREFERRED,
+        val activeSims: List<SimInfo> = emptyList(),
+        val selectedSimIndex: Int = 0,
         val permissionState: PermissionState = PermissionState.WRITE_SECURE_SETTINGS_MISSING
     )
 
@@ -43,29 +42,42 @@ class MainViewModel(
     }
 
     fun refreshState() {
-        val savedMode = settingsRepository.getSavedNetworkMode()
-        val carrier = networkRepository.getCarrierName()
-        val netType = networkRepository.getCurrentNetworkTypeName()
-        val simCount = networkRepository.getActiveSimCount()
+        val sims = networkRepository.getActiveSims()
         val perm = permissionManager.getPermissionState()
+        
+        val prevIndex = _uiState.value.selectedSimIndex
+        val selectedIndex = if (prevIndex in sims.indices) prevIndex else 0
 
         _uiState.value = UiState(
-            carrierName = carrier,
-            networkTypeName = netType,
-            activeSimCount = simCount,
-            selectedMode = savedMode,
+            activeSims = sims,
+            selectedSimIndex = selectedIndex,
             permissionState = perm
         )
     }
 
+    fun selectSim(index: Int) {
+        if (index in _uiState.value.activeSims.indices) {
+            _uiState.value = _uiState.value.copy(selectedSimIndex = index)
+        }
+    }
+
+    fun getSavedNetworkModeForSlot(slotIndex: Int): NetworkMode {
+        return settingsRepository.getSavedNetworkMode(slotIndex)
+    }
+
     fun applyNetworkMode(mode: NetworkMode) {
+        val currentState = _uiState.value
+        val index = currentState.selectedSimIndex
+        if (index !in currentState.activeSims.indices) return
+
+        val sim = currentState.activeSims[index]
         viewModelScope.launch {
             _actionResult.emit(Resource.Loading())
-            val success = networkModeManager.applyNetworkMode(mode)
+            val success = networkModeManager.applyNetworkMode(mode, sim.slotIndex, sim.subscriptionId)
             if (success) {
-                settingsRepository.saveNetworkMode(mode)
+                settingsRepository.saveNetworkMode(sim.slotIndex, mode)
                 refreshState()
-                _actionResult.emit(Resource.Success("Successfully applied: ${mode.title}"))
+                _actionResult.emit(Resource.Success("Successfully applied: ${mode.title} for ${sim.displayName}"))
             } else {
                 _actionResult.emit(Resource.Error("Failed to apply. Verify permissions are granted."))
             }

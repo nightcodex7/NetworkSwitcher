@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -52,6 +53,12 @@ class MainActivity : ComponentActivity() {
         viewModel.refreshState()
     }
 
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        viewModel.refreshState()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
@@ -65,6 +72,11 @@ class MainActivity : ComponentActivity() {
         viewModel = ViewModelProvider(this, viewModelFactory)[MainViewModel::class.java]
 
         Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
+
+        // Request READ_PHONE_STATE permission at startup for multi-SIM queries
+        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
+        }
 
         setContent {
             NetworkSwitcherTheme {
@@ -155,12 +167,80 @@ fun MainScreen(viewModel: MainViewModel) {
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            val selectedSim = if (uiState.activeSims.isNotEmpty() && uiState.selectedSimIndex in uiState.activeSims.indices) {
+                uiState.activeSims[uiState.selectedSimIndex]
+            } else {
+                null
+            }
+
+            // SIM Selection Tabs (only visible for multi-SIM setups)
+            if (uiState.activeSims.size > 1) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    uiState.activeSims.forEachIndexed { index, sim ->
+                        val isSimSelected = uiState.selectedSimIndex == index
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { viewModel.selectSim(index) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSimSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(
+                                width = if (isSimSelected) 2.dp else 1.dp,
+                                color = if (isSimSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = sim.displayName,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = if (isSimSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = sim.carrierName,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = sim.networkTypeName,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.secondary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // State Info Card
-            StatusCard(
-                carrierName = uiState.carrierName,
-                networkType = uiState.networkTypeName,
-                simCount = uiState.activeSimCount
-            )
+            if (selectedSim != null) {
+                StatusCard(
+                    carrierName = selectedSim.carrierName,
+                    networkType = selectedSim.networkTypeName,
+                    displayName = selectedSim.displayName,
+                    slotIndex = selectedSim.slotIndex
+                )
+            }
 
             // Permissions Banner
             PermissionBanner(
@@ -189,13 +269,18 @@ fun MainScreen(viewModel: MainViewModel) {
             )
 
             // Dynamic Option Cards
-            NetworkMode.values().forEach { mode ->
-                ModeSelectionCard(
-                    mode = mode,
-                    isSelected = uiState.selectedMode == mode,
-                    isEnabled = uiState.permissionState == PermissionState.GRANTED,
-                    onSelected = { viewModel.applyNetworkMode(mode) }
-                )
+            if (selectedSim != null) {
+                val currentSimMode = selectedSim.resolvedMode
+                    ?: viewModel.getSavedNetworkModeForSlot(selectedSim.slotIndex)
+
+                NetworkMode.values().forEach { mode ->
+                    ModeSelectionCard(
+                        mode = mode,
+                        isSelected = currentSimMode == mode,
+                        isEnabled = uiState.permissionState == PermissionState.GRANTED,
+                        onSelected = { viewModel.applyNetworkMode(mode) }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -204,7 +289,7 @@ fun MainScreen(viewModel: MainViewModel) {
 }
 
 @Composable
-fun StatusCard(carrierName: String, networkType: String, simCount: Int) {
+fun StatusCard(carrierName: String, networkType: String, displayName: String, slotIndex: Int) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -226,9 +311,10 @@ fun StatusCard(carrierName: String, networkType: String, simCount: Int) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = if (simCount > 1) "$simCount SIMs Active" else "Single SIM",
+                    text = "$displayName (Slot ${slotIndex + 1})",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             Spacer(modifier = Modifier.height(8.dp))

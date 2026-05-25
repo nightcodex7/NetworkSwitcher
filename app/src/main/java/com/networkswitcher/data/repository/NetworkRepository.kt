@@ -5,6 +5,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
+import com.networkswitcher.data.model.NetworkMode
+import com.networkswitcher.data.model.SimInfo
 
 class NetworkRepository(private val context: Context) {
     
@@ -54,5 +56,95 @@ class NetworkRepository(private val context: Context) {
         } catch (e: Exception) {
             1
         }
+    }
+
+    fun getActiveSims(): List<SimInfo> {
+        val simList = mutableListOf<SimInfo>()
+        try {
+            val activeList = subscriptionManager.activeSubscriptionInfoList
+            if (activeList != null) {
+                for (info in activeList) {
+                    val subId = info.subscriptionId
+                    val slotId = info.simSlotIndex
+                    val displayName = info.displayName?.toString() ?: "SIM ${slotId + 1}"
+                    val carrierName = info.carrierName?.toString() ?: "Unknown Carrier"
+                    
+                    // Get network type for this specific subId
+                    val specificTelephony = telephonyManager.createForSubscriptionId(subId)
+                    val networkType = try {
+                        specificTelephony.dataNetworkType
+                    } catch (e: SecurityException) {
+                        TelephonyManager.NETWORK_TYPE_UNKNOWN
+                    }
+                    
+                    val networkTypeName = when (networkType) {
+                        TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                        TelephonyManager.NETWORK_TYPE_LTE -> "4G (LTE)"
+                        TelephonyManager.NETWORK_TYPE_HSPAP, TelephonyManager.NETWORK_TYPE_HSPA,
+                        TelephonyManager.NETWORK_TYPE_UMTS -> "3G"
+                        TelephonyManager.NETWORK_TYPE_EDGE, TelephonyManager.NETWORK_TYPE_GPRS -> "2G"
+                        else -> "No Service / Unknown"
+                    }
+                    
+                    // Get current mode value from settings
+                    val resolver = context.contentResolver
+                    val currentModeValue = android.provider.Settings.Global.getInt(
+                        resolver, 
+                        "preferred_network_mode$subId", 
+                        android.provider.Settings.Global.getInt(resolver, "preferred_network_mode", -1)
+                    )
+                    
+                    val resolvedMode = when (currentModeValue) {
+                        27 -> NetworkMode.FIVE_G_ONLY
+                        26 -> NetworkMode.FIVE_G_PREFERRED
+                        11 -> NetworkMode.FOUR_G_ONLY
+                        else -> null
+                    }
+                    
+                    simList.add(
+                        SimInfo(
+                            subscriptionId = subId,
+                            slotIndex = slotId,
+                            displayName = displayName,
+                            carrierName = carrierName,
+                            networkTypeName = networkTypeName,
+                            currentModeValue = currentModeValue,
+                            resolvedMode = resolvedMode
+                        )
+                    )
+                }
+            }
+        } catch (e: SecurityException) {
+            // Read phone state permission missing
+        } catch (e: Exception) {
+            // Other exceptions
+        }
+        
+        // If the list is empty, fallback to virtual SIM 1
+        if (simList.isEmpty()) {
+            val carrier = getCarrierName()
+            val netType = getCurrentNetworkTypeName()
+            val resolver = context.contentResolver
+            val modeVal = android.provider.Settings.Global.getInt(resolver, "preferred_network_mode", -1)
+            val resolved = when (modeVal) {
+                27 -> NetworkMode.FIVE_G_ONLY
+                26 -> NetworkMode.FIVE_G_PREFERRED
+                11 -> NetworkMode.FOUR_G_ONLY
+                else -> null
+            }
+            simList.add(
+                SimInfo(
+                    subscriptionId = -1,
+                    slotIndex = 0,
+                    displayName = "SIM 1",
+                    carrierName = carrier,
+                    networkTypeName = netType,
+                    currentModeValue = modeVal,
+                    resolvedMode = resolved
+                )
+            )
+        }
+        
+        return simList
     }
 }

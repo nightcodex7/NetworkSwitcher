@@ -13,86 +13,61 @@ class NetworkModeManager(
 ) {
     private val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
 
-    fun applyNetworkMode(mode: NetworkMode): Boolean {
+    fun applyNetworkMode(mode: NetworkMode, slotId: Int, subId: Int): Boolean {
         var success = false
 
-        // Method 1: Modify Global Settings directly via ContentResolver (if WRITE_SECURE_SETTINGS is granted)
+        // Method 1: Modify Settings directly via ContentResolver (if WRITE_SECURE_SETTINGS is granted)
         if (permissionManager.hasWriteSecureSettings()) {
             try {
-                success = writeSettingsDirectly(mode)
+                success = writeSettingsDirectly(mode, subId)
             } catch (e: Exception) {
-                Log.e("NetworkModeManager", "Failed to write secure settings directly", e)
+                Log.e("NetworkModeManager", "Failed to write secure settings directly for subId $subId", e)
             }
         }
 
         // Method 2: Shizuku / Shell Command Execution (for fallback and redundancy)
         if (permissionManager.isShizukuRunning() && permissionManager.hasShizukuPermission()) {
             try {
-                val shizukuSuccess = writeSettingsViaShizuku(mode)
+                val shizukuSuccess = writeSettingsViaShizuku(mode, slotId, subId)
                 success = success || shizukuSuccess
             } catch (e: Exception) {
-                Log.e("NetworkModeManager", "Failed to write secure settings via Shizuku", e)
+                Log.e("NetworkModeManager", "Failed to write secure settings via Shizuku for slot $slotId", e)
             }
         }
 
         return success
     }
 
-    private fun writeSettingsDirectly(mode: NetworkMode): Boolean {
+    private fun writeSettingsDirectly(mode: NetworkMode, subId: Int): Boolean {
         val resolver = context.contentResolver
         
-        // Write to default global setting key
+        // Write to global key
         Settings.Global.putInt(resolver, "preferred_network_mode", mode.settingsValue)
         
-        // Write to subscription-specific keys if present
-        try {
-            val activeList = subscriptionManager.activeSubscriptionInfoList
-            if (activeList != null) {
-                for (info in activeList) {
-                    val subId = info.subscriptionId
-                    Settings.Global.putInt(resolver, "preferred_network_mode$subId", mode.settingsValue)
-                }
-            }
-        } catch (e: SecurityException) {
-            Log.w("NetworkModeManager", "No READ_PHONE_STATE permission to retrieve SIM subIds", e)
+        // Write to subscription-specific key
+        if (subId != -1) {
+            Settings.Global.putInt(resolver, "preferred_network_mode$subId", mode.settingsValue)
         }
         
         return true
     }
 
-    private fun writeSettingsViaShizuku(mode: NetworkMode): Boolean {
+    private fun writeSettingsViaShizuku(mode: NetworkMode, slotId: Int, subId: Int): Boolean {
         var overallSuccess = true
         
         // Execute setting writes as shell user
-        val cmd1 = "settings put global preferred_network_mode ${mode.settingsValue}"
-        overallSuccess = overallSuccess && executeShellCommand(cmd1)
+        val cmdGlobal = "settings put global preferred_network_mode ${mode.settingsValue}"
+        overallSuccess = overallSuccess && executeShellCommand(cmdGlobal)
 
-        try {
-            val activeList = subscriptionManager.activeSubscriptionInfoList
-            if (activeList != null && activeList.isNotEmpty()) {
-                for (info in activeList) {
-                    val subId = info.subscriptionId
-                    val slotId = info.simSlotIndex
-                    
-                    // 1. Write subscription-specific preferred_network_mode
-                    val cmdSub = "settings put global preferred_network_mode$subId ${mode.settingsValue}"
-                    executeShellCommand(cmdSub)
-
-                    // 2. Write allowed network types bitmask via modern telephony cmd (Android 12 to 17)
-                    val cmdAllowedTypes = "cmd phone set-allowed-network-types-for-users -s $slotId ${mode.allowedTypesBitmask}"
-                    val cmdRes = executeShellCommand(cmdAllowedTypes)
-                    overallSuccess = overallSuccess && cmdRes
-                }
-            } else {
-                // Fallback to slot 0 if subscription info is empty
-                val cmdAllowedTypesFallback = "cmd phone set-allowed-network-types-for-users -s 0 ${mode.allowedTypesBitmask}"
-                overallSuccess = overallSuccess && executeShellCommand(cmdAllowedTypesFallback)
-            }
-        } catch (e: SecurityException) {
-            // If subscriptionManager cannot be accessed, try slot 0 & 1 blindly
-            executeShellCommand("cmd phone set-allowed-network-types-for-users -s 0 ${mode.allowedTypesBitmask}")
-            executeShellCommand("cmd phone set-allowed-network-types-for-users -s 1 ${mode.allowedTypesBitmask}")
+        if (subId != -1) {
+            val cmdSub = "settings put global preferred_network_mode$subId ${mode.settingsValue}"
+            executeShellCommand(cmdSub)
         }
+
+        // Write allowed network types bitmask via modern telephony cmd (Android 12 to 17)
+        val cmdAllowedTypes = "cmd phone set-allowed-network-types-for-users -s $slotId ${mode.allowedTypesBitmask}"
+        val cmdRes = executeShellCommand(cmdAllowedTypes)
+        overallSuccess = overallSuccess && cmdRes
 
         return overallSuccess
     }

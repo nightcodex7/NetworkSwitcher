@@ -6,8 +6,10 @@ import com.networkswitcher.data.model.NetworkMode
 class SettingsRepository(context: Context) {
     private val prefs = context.getSharedPreferences("network_switcher_prefs", Context.MODE_PRIVATE)
 
-    fun getSavedNetworkMode(): NetworkMode {
-        val name = prefs.getString("last_mode", NetworkMode.FIVE_G_PREFERRED.name)
+    fun getSavedNetworkMode(): NetworkMode = getSavedNetworkMode(0)
+
+    fun getSavedNetworkMode(slotIndex: Int): NetworkMode {
+        val name = prefs.getString("last_mode_slot_$slotIndex", NetworkMode.FIVE_G_PREFERRED.name)
         return try {
             NetworkMode.valueOf(name ?: NetworkMode.FIVE_G_PREFERRED.name)
         } catch (e: Exception) {
@@ -15,7 +17,9 @@ class SettingsRepository(context: Context) {
         }
     }
 
-    fun saveNetworkMode(mode: NetworkMode) {
-        prefs.edit().putString("last_mode", mode.name).apply()
+    fun saveNetworkMode(mode: NetworkMode) = saveNetworkMode(0, mode)
+
+    fun saveNetworkMode(slotIndex: Int, mode: NetworkMode) {
+        prefs.edit().putString("last_mode_slot_$slotIndex", mode.name).apply()
     }
 }
